@@ -776,6 +776,12 @@ impl VectorcraftApp {
             self.publish_clipboard();
         }
         self.sync_views();
+        if id == "links.supplyExternal"
+            && r.as_ref().is_ok_and(|v| v["resolved"].as_u64().unwrap_or(0) > 0)
+            && let Some(reference) = params["reference"].as_str()
+        {
+            dialogs::missing_links::supplied(self, reference);
+        }
         match &r {
             Err(e) => self.ui.status = e.clone(),
             Ok(v) => {
