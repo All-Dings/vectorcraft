@@ -8,11 +8,10 @@ engine: Preserve versioned external image references
 Original-All-Dings-Commit: ff3e4d0809e342782a33493b0435e1c20d788052
 
 ---
-diff --git a/crates/engine/src/cmd/external_images.rs b/crates/engine/src/cmd/external_images.rs
-new file mode 100644
-index 0000000000000000000000000000000000000000..f30f7874d25cfb26216eaa27b004d994b55bc842
+Index: vectorcraft/crates/engine/src/cmd/external_images.rs
+===================================================================
 --- /dev/null
-+++ b/crates/engine/src/cmd/external_images.rs
++++ vectorcraft/crates/engine/src/cmd/external_images.rs
 @@ -0,0 +1,176 @@
 +//! Host-supplied bytes for ordinary relative image links. No network access.
 +use super::*;
@@ -190,10 +189,10 @@ index 0000000000000000000000000000000000000000..f30f7874d25cfb26216eaa27b004d994
 +        assert_eq!(saved, saved_again);
 +    }
 +}
-diff --git a/crates/engine/src/cmd/mod.rs b/crates/engine/src/cmd/mod.rs
-index 26d3ba5126bcaa2aaf418e9d85396c1353647b5b..16266e0e611a50a53cfd13651fc69a89172878a8 100644
---- a/crates/engine/src/cmd/mod.rs
-+++ b/crates/engine/src/cmd/mod.rs
+Index: vectorcraft/crates/engine/src/cmd/mod.rs
+===================================================================
+--- vectorcraft.orig/crates/engine/src/cmd/mod.rs
++++ vectorcraft/crates/engine/src/cmd/mod.rs
 @@ -21,6 +21,7 @@ mod draw2;
  mod edit;
  mod effectcmd;
@@ -202,7 +201,7 @@ index 26d3ba5126bcaa2aaf418e9d85396c1353647b5b..16266e0e611a50a53cfd13651fc69a89
  pub(crate) mod fileinfo;
  pub mod fileio;
  pub mod findfiles;
-@@ -278,6 +279,7 @@ pub fn command_specs() -> &'static [CommandSpec] {
+@@ -282,6 +283,7 @@ pub fn command_specs() -> &'static [Comm
          v.extend(newdoc::specs());
          v.extend(place::specs());
          v.extend(links::specs());
@@ -210,11 +209,11 @@ index 26d3ba5126bcaa2aaf418e9d85396c1353647b5b..16266e0e611a50a53cfd13651fc69a89
          v.extend(linkfiles::specs());
          v.extend(pdfcmds::specs());
          v.extend(fileio::dxf::specs());
-diff --git a/crates/ui-egui/src/dialogs/missing_links.rs b/crates/ui-egui/src/dialogs/missing_links.rs
-index 5ea9d77b8bbf866154a57f7c853421c2ec868314..428a6caf5ae696623f1de95ed7a60b47bf063c4c 100644
---- a/crates/ui-egui/src/dialogs/missing_links.rs
-+++ b/crates/ui-egui/src/dialogs/missing_links.rs
-@@ -57,6 +57,19 @@ pub fn after_open(app: &mut VectorcraftApp, r: &Value) {
+Index: vectorcraft/crates/ui-egui/src/dialogs/missing_links.rs
+===================================================================
+--- vectorcraft.orig/crates/ui-egui/src/dialogs/missing_links.rs
++++ vectorcraft/crates/ui-egui/src/dialogs/missing_links.rs
+@@ -57,6 +57,19 @@ pub fn after_open(app: &mut VectorcraftA
      super::settle(app);
  }
  
@@ -261,11 +260,11 @@ index 5ea9d77b8bbf866154a57f7c853421c2ec868314..428a6caf5ae696623f1de95ed7a60b47
      fn frame(app: &mut VectorcraftApp) -> String {
          crate::tests_labels::painted_text(app, |app, ui| super::super::show(app, ui.ctx()))
      }
-diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
-index 3f20782cf6fe43ec00c84a38158708b62fb1569f..acfcb6b2627dea011b356ffc45de87af6ee35481 100644
---- a/crates/ui-egui/src/lib.rs
-+++ b/crates/ui-egui/src/lib.rs
-@@ -879,6 +879,12 @@ impl VectorcraftApp {
+Index: vectorcraft/crates/ui-egui/src/lib.rs
+===================================================================
+--- vectorcraft.orig/crates/ui-egui/src/lib.rs
++++ vectorcraft/crates/ui-egui/src/lib.rs
+@@ -913,6 +913,12 @@ impl VectorcraftApp {
              self.publish_clipboard();
          }
          self.sync_views();
@@ -278,11 +277,10 @@ index 3f20782cf6fe43ec00c84a38158708b62fb1569f..acfcb6b2627dea011b356ffc45de87af
          // File › Revert replaces the document in its tab, keeps the tab's view and starts the tool afresh.
          self.follow_artboard_tool(artboards);
          match &r {
-diff --git a/docs/all-dings-addons.md b/docs/all-dings-addons.md
-new file mode 100644
-index 0000000000000000000000000000000000000000..d539e86bbe6d2bcb157080b470a62d5e1a482a93
+Index: vectorcraft/docs/all-dings-addons.md
+===================================================================
 --- /dev/null
-+++ b/docs/all-dings-addons.md
++++ vectorcraft/docs/all-dings-addons.md
 @@ -0,0 +1,20 @@
 +# All-Dings Addons
 +

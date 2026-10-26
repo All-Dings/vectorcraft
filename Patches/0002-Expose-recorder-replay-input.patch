@@ -8,10 +8,10 @@ ui: Expose recorder replay input
 Original-All-Dings-Commit: 41280a3e086d53ea051d849dd415d720cb1dd3f4
 
 ---
-diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
-index e29b61c4b26387f79a7483cd3d1b904e7bfce0a5..79cccb2c45c53f8cc927a6fdb58aea24edefc8c9 100644
---- a/crates/ui-egui/src/canvas.rs
-+++ b/crates/ui-egui/src/canvas.rs
+Index: vectorcraft/crates/ui-egui/src/canvas.rs
+===================================================================
+--- vectorcraft.orig/crates/ui-egui/src/canvas.rs
++++ vectorcraft/crates/ui-egui/src/canvas.rs
 @@ -1,6 +1,7 @@
  //! The document canvas: rendering, rulers, navigation, pointer routing to tools and on-canvas
  //! selection visuals (bounding box, anchors, handles, smart-guide style labels).
@@ -20,7 +20,7 @@ index e29b61c4b26387f79a7483cd3d1b904e7bfce0a5..79cccb2c45c53f8cc927a6fdb58aea24
  use egui::{Color32, CornerRadius, Pos2, Sense, Shape, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
  use serde_json::json;
  use vectorcraft_doc::text::TextKind;
-@@ -261,6 +262,9 @@ pub fn show(app: &mut VectorcraftApp, ui: &mut Ui) {
+@@ -296,6 +297,9 @@ pub fn show(app: &mut VectorcraftApp, ui
      let bars = app.ui.screen_mode < 2;
      let full = if bars { egui::Rect::from_min_max(full.min, full.max - vec2(SCROLL_BAR, SCROLL_BAR)) } else { full };
      let rect = if app.ui.view.rulers && app.ui.screen_mode < 3 { egui::Rect::from_min_max(full.min + vec2(RULER, RULER), full.max) } else { full };
@@ -30,7 +30,7 @@ index e29b61c4b26387f79a7483cd3d1b904e7bfce0a5..79cccb2c45c53f8cc927a6fdb58aea24
      app.canvas_rect = Some(rect);
      let fitted = app.view().is_some_and(|v| v.fitted);
      if !fitted {
-@@ -3597,6 +3601,32 @@ mod tests {
+@@ -3837,6 +3841,32 @@ mod tests {
      use vectorcraft_engine::Session;
      use vectorcraft_geom::Shape as _;
  
@@ -63,11 +63,11 @@ index e29b61c4b26387f79a7483cd3d1b904e7bfce0a5..79cccb2c45c53f8cc927a6fdb58aea24
      /// A rendered raster becomes the image egui's own conversion makes of it, half-transparent
      /// edges and all; one whose bytes don't match its size becomes an empty image of that size.
      #[test]
-diff --git a/docs/all-dings-addons.md b/docs/all-dings-addons.md
-index d539e86bbe6d2bcb157080b470a62d5e1a482a93..a2091d28d518a639d30d4d34d6a4e87ab6a997ad 100644
---- a/docs/all-dings-addons.md
-+++ b/docs/all-dings-addons.md
-@@ -18,3 +18,16 @@ Adapters must authorize identifiers before fetching bytes. No engine network
+Index: vectorcraft/docs/all-dings-addons.md
+===================================================================
+--- vectorcraft.orig/docs/all-dings-addons.md
++++ vectorcraft/docs/all-dings-addons.md
+@@ -18,3 +18,16 @@ Adapters must authorize identifiers befo
  requests occur. Normal native link updates retain upstream behavior, including
  its policy for changed files. Copy/paste preserves links. Include Linked Files
  can embed originals. These commands work through native control and the web API.
