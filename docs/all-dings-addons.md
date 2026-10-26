@@ -18,3 +18,16 @@ Adapters must authorize identifiers before fetching bytes. No engine network
 requests occur. Normal native link updates retain upstream behavior, including
 its policy for changed files. Copy/paste preserves links. Include Linked Files
 can embed originals. These commands work through native control and the web API.
+
+## Canvas geometry for browser input replay
+
+The document canvas rounds its rectangle to device pixels before painting,
+inspection and screen-to-document pointer mapping. Fresh egui dock layouts can
+otherwise differ by 1/32 of a CSS pixel, moving document coordinates even when
+the viewport and pointer positions match. This change has no Dings dependency
+and adds no control method. A headless regression covers subpixel dock width
+variation and verifies that a real pixel resize still changes the mapping.
+
+The keyboard/mouse recorder, SM serialization, playback scheduler and controls
+live in the external ArtCraft wrapper. The wrapper uses the existing web API
+for initialization and inspection and the browser input path for event replay.
