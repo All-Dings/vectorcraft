@@ -57,19 +57,6 @@ pub fn after_open(app: &mut VectorcraftApp, r: &Value) {
     super::settle(app);
 }
 
-/// A host supplied the original bytes; remove only that link from the pending prompt.
-pub(crate) fn supplied(app: &mut VectorcraftApp, reference: &str) {
-    let Some(dialog) = app.ui.dialog.as_mut().filter(|d| d.kind == KIND) else { return };
-    let Some(rows) = dialog.fields.get_mut("missing").and_then(Value::as_array_mut) else { return };
-    rows.retain(|row| row["path"].as_str() != Some(reference));
-    if rows.is_empty() {
-        let modified = dialog.fields.get("modified").and_then(Value::as_array).cloned().unwrap_or_default();
-        app.ui.dialog = None;
-        ask_update(app, modified);
-        super::settle(app);
-    }
-}
-
 fn open(app: &mut VectorcraftApp, missing: Vec<Value>, modified: Vec<Value>) {
     app.ui.dialog = Some(Dialog::new(KIND, json!({ "missing": missing, "modified": modified, "applyToAll": false, "path": "" })));
 }
@@ -207,26 +194,6 @@ fn confirm(app: &mut VectorcraftApp, d: &Dialog) -> Result<Value, String> {
 mod tests {
     use super::*;
     use vectorcraft_engine::Session;
-
-    #[test]
-    fn supplied_link_removes_only_its_prompt_entry() {
-        let mut app = VectorcraftApp::new(Session::new(), Default::default());
-        app.ui.dialog = Some(Dialog::new(
-            KIND,
-            json!({"missing":[
-            {"path":"a.png","ids":[1]}, {"path":"b.png","ids":[2]}
-        ],"modified":[]}),
-        ));
-        supplied(&mut app, "unrelated.png");
-        assert_eq!(app.ui.dialog.as_ref().unwrap().fields["missing"].as_array().unwrap().len(), 2);
-        supplied(&mut app, "a.png");
-        assert_eq!(app.ui.dialog.as_ref().unwrap().fields["missing"][0]["path"], "b.png");
-        supplied(&mut app, "b.png");
-        assert!(app.ui.dialog.is_none());
-        app.ui.dialog = Some(Dialog::new("saveChanges", json!({})));
-        supplied(&mut app, "a.png");
-        assert_eq!(app.ui.dialog.as_ref().unwrap().kind, "saveChanges");
-    }
 
     fn frame(app: &mut VectorcraftApp) -> String {
         crate::tests_labels::painted_text(app, |app, ui| super::super::show(app, ui.ctx()))

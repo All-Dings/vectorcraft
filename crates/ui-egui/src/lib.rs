@@ -879,12 +879,6 @@ impl VectorcraftApp {
             self.publish_clipboard();
         }
         self.sync_views();
-        if id == "links.supplyExternal"
-            && r.as_ref().is_ok_and(|v| v["resolved"].as_u64().unwrap_or(0) > 0)
-            && let Some(reference) = params["reference"].as_str()
-        {
-            dialogs::missing_links::supplied(self, reference);
-        }
         // File › Revert replaces the document in its tab, keeps the tab's view and starts the tool afresh.
         self.follow_artboard_tool(artboards);
         match &r {

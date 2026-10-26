@@ -21,7 +21,6 @@ mod draw2;
 mod edit;
 mod effectcmd;
 pub mod expand;
-mod external_images;
 pub(crate) mod fileinfo;
 pub mod fileio;
 pub mod findfiles;
@@ -279,7 +278,6 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(newdoc::specs());
         v.extend(place::specs());
         v.extend(links::specs());
-        v.extend(external_images::specs());
         v.extend(linkfiles::specs());
         v.extend(pdfcmds::specs());
         v.extend(fileio::dxf::specs());

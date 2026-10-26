@@ -1,0 +1,306 @@
+From ff3e4d0809e342782a33493b0435e1c20d788052 Mon Sep 17 00:00:00 2001
+From: Michael Holzheu <michael@holzheu.de>
+Date: Thu, 22 Oct 2026 01:12:11 +0200
+Subject: [PATCH] engine: Preserve versioned external image references
+
+engine: Preserve versioned external image references
+
+Original-All-Dings-Commit: ff3e4d0809e342782a33493b0435e1c20d788052
+
+---
+diff --git a/crates/engine/src/cmd/external_images.rs b/crates/engine/src/cmd/external_images.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f30f7874d25cfb26216eaa27b004d994b55bc842
+--- /dev/null
++++ b/crates/engine/src/cmd/external_images.rs
+@@ -0,0 +1,176 @@
++//! Host-supplied bytes for ordinary relative image links. No network access.
++use super::*;
++use serde_json::json;
++use std::collections::BTreeSet;
++use std::sync::Arc;
++use vectorcraft_doc::{LinkInfo, NodeKind, links::hash_bytes};
++
++pub fn specs() -> Vec<CommandSpec> {
++    vec![
++        cmd!(
++            "links.openExternal",
++            "Open External Image",
++            [],
++            None,
++            "{reference, path? | name?, dataBase64?} open raster bytes as a new document linked to a relative filename; the host supplies bytes, never a URL fetch",
++            always,
++            open
++        ),
++        cmd!(query "links.external", "External Images", [], None,
++            "{} list unresolved external images across open documents → {references: [reference]}", always, pending),
++        cmd!(
++            "links.supplyExternal",
++            "Supply External Image",
++            [],
++            None,
++            "{reference, path? | name?, dataBase64?} supply immutable image bytes to matching references across open documents; verifies saved hashes and image keys without making an edit → {resolved}",
++            always,
++            supply
++        ),
++    ]
++}
++
++fn reference<'a>(p: &'a Value, cmd: &str) -> Result<&'a str> {
++    let r = str_param(p, "reference").ok_or_else(|| bad(cmd, "missing reference"))?;
++    if r.is_empty() || r.len() > 255 || r == "." || r == ".." || !r.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b)) {
++        return Err(bad(cmd, "expected a relative filename"));
++    }
++    Ok(r)
++}
++
++fn check_size(p: &Value) -> Result<()> {
++    if str_param(p, "dataBase64").is_some_and(|b| b.len() > 90 * 1024 * 1024) {
++        return Err(bad("links.external", "image exceeds 64 MiB"));
++    }
++    Ok(())
++}
++
++fn open(s: &mut Session, p: &Value) -> Result<Value> {
++    let r = reference(p, "links.openExternal")?;
++    check_size(p)?;
++    let src = fileio::source(p, "links.openExternal")?;
++    if src.bytes.len() > 64 * 1024 * 1024 {
++        return Err(bad("links.external", "image exceeds 64 MiB"));
++    }
++    let img = fileio::raster_image(&src.bytes)?;
++    let result = fileio::open_bytes(s, src.name, &src.bytes, None)?;
++    let st = s.doc_mut()?;
++    let d = Arc::make_mut(&mut st.doc);
++    let mut ids = vec![];
++    d.visit_images(|n, _| ids.push(n.id));
++    for id in ids {
++        if let Some(n) = d.node_mut(id)
++            && let NodeKind::Image(im) = &mut n.kind
++        {
++            im.link =
++                Some(LinkInfo { path: r.into(), hash: Some(hash_bytes(&src.bytes)), size: Some(src.bytes.len() as u64), ..LinkInfo::default() });
++        }
++    }
++    super::links::store_image(d, &img.key, img.blob, true);
++    st.revision += 1;
++    Ok(result)
++}
++
++fn pending(s: &mut Session, _: &Value) -> Result<Value> {
++    let mut refs = BTreeSet::new();
++    for st in s.documents() {
++        st.doc.visit_images(|_, im| {
++            if let Some(l) = &im.link
++                && st.doc.images.get(&im.key).is_none_or(|b| b.is_proxy())
++            {
++                refs.insert(l.path.clone());
++            }
++        });
++    }
++    Ok(json!({"references": refs}))
++}
++
++fn supply(s: &mut Session, p: &Value) -> Result<Value> {
++    let r = reference(p, "links.supplyExternal")?;
++    check_size(p)?;
++    let src = fileio::source(p, "links.supplyExternal")?;
++    let hash = hash_bytes(&src.bytes);
++    if src.bytes.len() > 64 * 1024 * 1024 {
++        return Err(bad("links.external", "image exceeds 64 MiB"));
++    }
++    let img = fileio::raster_image(&src.bytes)?;
++    let mut targets = vec![];
++    for st in s.documents() {
++        let mut found = false;
++        let mut invalid = false;
++        st.doc.visit_images(|_, im| {
++            if let Some(l) = &im.link
++                && l.path == r
++            {
++                found = true;
++                invalid |= l.hash.as_deref() != Some(&hash) || im.key != img.key;
++            }
++        });
++        if invalid {
++            return Err(bad("links.supplyExternal", "external image checksum mismatch"));
++        }
++        if found {
++            targets.push(st.uid);
++        }
++    }
++    for uid in &targets {
++        if let Some(st) = s.document_mut(*uid) {
++            st.change_unsaved(|d| super::links::store_image(Arc::make_mut(d), &img.key, img.blob.clone(), true));
++            st.revision += 1;
++        }
++    }
++    Ok(json!({"resolved": targets.len()}))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::tests_links::png;
++
++    #[test]
++    fn ordinary_link_loads_with_stock_resolver() {
++        let folder = crate::tests_links::Folder::new("ordinary-sibling");
++        let bytes = png(512, 512, [20, 40, 60]);
++        let reference = "401000054.V.0.png";
++        let mut s = Session::new();
++        open(&mut s, &json!({"reference":reference,"name":reference,"dataBase64":vectorcraft_format::base64_encode(&bytes)})).unwrap();
++        s.doc().unwrap().doc.visit_images(|_, im| assert_eq!(im.link.as_ref().unwrap().path, reference));
++        let saved = vectorcraft_format::save(&s.doc().unwrap().doc, false);
++        std::fs::write(folder.file(reference), &bytes).unwrap();
++        let mut reopened = Session::new();
++        fileio::open_bytes(&mut reopened, "Test.vectorcraft", &saved, Some(folder.file("Test.vectorcraft"))).unwrap();
++        assert_eq!(pending(&mut reopened, &json!({})).unwrap()["references"], json!([]));
++        assert!(!reopened.doc().unwrap().is_dirty());
++        for invalid in ["../x.png", "/x.png", "https://host/x.png", "asset:dings:1.V.0.png"] {
++            assert!(open(&mut s, &json!({"reference":invalid,"dataBase64":""})).is_err());
++        }
++    }
++
++    #[test]
++    fn external_images_roundtrip_and_hash_guard() {
++        let bytes = png(512, 512, [20, 40, 60]);
++        let data = vectorcraft_format::base64_encode(&bytes);
++        let reference = "picture.V.1.png";
++        let mut s = Session::new();
++        open(&mut s, &json!({"reference":reference, "name":"picture.png", "dataBase64":data})).unwrap();
++        s.execute("select.all", &json!({})).unwrap();
++        s.execute("edit.copy", &json!({})).unwrap();
++        s.execute("file.new", &json!({})).unwrap();
++        s.execute("edit.paste", &json!({})).unwrap();
++        let mut links = vec![];
++        s.doc().unwrap().doc.visit_images(|_, im| links.push(im.link.as_ref().unwrap().path.clone()));
++        assert_eq!(links, vec![reference]);
++        let saved = vectorcraft_format::save(&s.doc().unwrap().doc, false);
++        let mut reopened = Session::new();
++        fileio::open_bytes(&mut reopened, "picture.vectorcraft", &saved, None).unwrap();
++        assert_eq!(pending(&mut reopened, &json!({})).unwrap()["references"], json!([reference]));
++        let wrong = vectorcraft_format::base64_encode(&png(512, 512, [90, 20, 10]));
++        assert!(supply(&mut reopened, &json!({"reference":reference,"dataBase64":wrong})).is_err());
++        let dirty = reopened.doc().unwrap().is_dirty();
++        assert_eq!(supply(&mut reopened, &json!({"reference":reference,"dataBase64":data})).unwrap()["resolved"], 1);
++        assert_eq!(pending(&mut reopened, &json!({})).unwrap()["references"], json!([]));
++        assert_eq!(reopened.doc().unwrap().is_dirty(), dirty);
++        let saved_again = vectorcraft_format::save(&reopened.doc().unwrap().doc, false);
++        assert_eq!(saved, saved_again);
++    }
++}
+diff --git a/crates/engine/src/cmd/mod.rs b/crates/engine/src/cmd/mod.rs
+index 26d3ba5126bcaa2aaf418e9d85396c1353647b5b..16266e0e611a50a53cfd13651fc69a89172878a8 100644
+--- a/crates/engine/src/cmd/mod.rs
++++ b/crates/engine/src/cmd/mod.rs
+@@ -21,6 +21,7 @@ mod draw2;
+ mod edit;
+ mod effectcmd;
+ pub mod expand;
++mod external_images;
+ pub(crate) mod fileinfo;
+ pub mod fileio;
+ pub mod findfiles;
+@@ -278,6 +279,7 @@ pub fn command_specs() -> &'static [CommandSpec] {
+         v.extend(newdoc::specs());
+         v.extend(place::specs());
+         v.extend(links::specs());
++        v.extend(external_images::specs());
+         v.extend(linkfiles::specs());
+         v.extend(pdfcmds::specs());
+         v.extend(fileio::dxf::specs());
+diff --git a/crates/ui-egui/src/dialogs/missing_links.rs b/crates/ui-egui/src/dialogs/missing_links.rs
+index 5ea9d77b8bbf866154a57f7c853421c2ec868314..428a6caf5ae696623f1de95ed7a60b47bf063c4c 100644
+--- a/crates/ui-egui/src/dialogs/missing_links.rs
++++ b/crates/ui-egui/src/dialogs/missing_links.rs
+@@ -57,6 +57,19 @@ pub fn after_open(app: &mut VectorcraftApp, r: &Value) {
+     super::settle(app);
+ }
+ 
++/// A host supplied the original bytes; remove only that link from the pending prompt.
++pub(crate) fn supplied(app: &mut VectorcraftApp, reference: &str) {
++    let Some(dialog) = app.ui.dialog.as_mut().filter(|d| d.kind == KIND) else { return };
++    let Some(rows) = dialog.fields.get_mut("missing").and_then(Value::as_array_mut) else { return };
++    rows.retain(|row| row["path"].as_str() != Some(reference));
++    if rows.is_empty() {
++        let modified = dialog.fields.get("modified").and_then(Value::as_array).cloned().unwrap_or_default();
++        app.ui.dialog = None;
++        ask_update(app, modified);
++        super::settle(app);
++    }
++}
++
+ fn open(app: &mut VectorcraftApp, missing: Vec<Value>, modified: Vec<Value>) {
+     app.ui.dialog = Some(Dialog::new(KIND, json!({ "missing": missing, "modified": modified, "applyToAll": false, "path": "" })));
+ }
+@@ -195,6 +208,26 @@ mod tests {
+     use super::*;
+     use vectorcraft_engine::Session;
+ 
++    #[test]
++    fn supplied_link_removes_only_its_prompt_entry() {
++        let mut app = VectorcraftApp::new(Session::new(), Default::default());
++        app.ui.dialog = Some(Dialog::new(
++            KIND,
++            json!({"missing":[
++            {"path":"a.png","ids":[1]}, {"path":"b.png","ids":[2]}
++        ],"modified":[]}),
++        ));
++        supplied(&mut app, "unrelated.png");
++        assert_eq!(app.ui.dialog.as_ref().unwrap().fields["missing"].as_array().unwrap().len(), 2);
++        supplied(&mut app, "a.png");
++        assert_eq!(app.ui.dialog.as_ref().unwrap().fields["missing"][0]["path"], "b.png");
++        supplied(&mut app, "b.png");
++        assert!(app.ui.dialog.is_none());
++        app.ui.dialog = Some(Dialog::new("saveChanges", json!({})));
++        supplied(&mut app, "a.png");
++        assert_eq!(app.ui.dialog.as_ref().unwrap().kind, "saveChanges");
++    }
++
+     fn frame(app: &mut VectorcraftApp) -> String {
+         crate::tests_labels::painted_text(app, |app, ui| super::super::show(app, ui.ctx()))
+     }
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 3f20782cf6fe43ec00c84a38158708b62fb1569f..acfcb6b2627dea011b356ffc45de87af6ee35481 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -879,6 +879,12 @@ impl VectorcraftApp {
+             self.publish_clipboard();
+         }
+         self.sync_views();
++        if id == "links.supplyExternal"
++            && r.as_ref().is_ok_and(|v| v["resolved"].as_u64().unwrap_or(0) > 0)
++            && let Some(reference) = params["reference"].as_str()
++        {
++            dialogs::missing_links::supplied(self, reference);
++        }
+         // File › Revert replaces the document in its tab, keeps the tab's view and starts the tool afresh.
+         self.follow_artboard_tool(artboards);
+         match &r {
+diff --git a/docs/all-dings-addons.md b/docs/all-dings-addons.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..d539e86bbe6d2bcb157080b470a62d5e1a482a93
+--- /dev/null
++++ b/docs/all-dings-addons.md
+@@ -0,0 +1,20 @@
++# All-Dings Addons
++
++## Host-supplied linked images (control-protocol.md)
++
++`links.openExternal {reference, name, dataBase64}` opens a raster image linked
++with an ordinary relative filename. Native callers may supply `path` instead
++of bytes. `reference` is a single ASCII basename (letters, digits, dots,
++underscores, hyphens; excluding `.` and `..`). No URI scheme is stored.
++The existing LinkInfo checksum and preview are retained. Unmodified native
++VectorCraft can load these files when the images are beside the project.
++
++`links.external {}` lists unresolved image link paths across open documents.
++`links.supplyExternal {reference, name, dataBase64}` (or `path`) restores
++original pixels only when the saved checksum and image key match. It preserves
++the link and does not mark the project dirty or create an undo step. Successful
++supply removes the corresponding entry from a native missing-link prompt.
++Adapters must authorize identifiers before fetching bytes. No engine network
++requests occur. Normal native link updates retain upstream behavior, including
++its policy for changed files. Copy/paste preserves links. Include Linked Files
++can embed originals. These commands work through native control and the web API.
